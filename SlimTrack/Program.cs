@@ -1,7 +1,10 @@
+using SlimTrack.Data.Database;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
+builder.AddNpgsqlDbContext<DbContext>("database");
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
