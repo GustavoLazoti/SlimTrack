@@ -2,13 +2,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-// Ensure console logging is enabled and verbose enough to capture exceptions in container logs
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-builder.Logging.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Debug);
-
-// Add services to the container.
-
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
