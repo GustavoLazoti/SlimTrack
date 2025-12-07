@@ -3,9 +3,9 @@ using SlimTrack.Models;
 
 namespace SlimTrack.Data.Database;
 
-public class DbContext : Microsoft.EntityFrameworkCore.DbContext
+public class AppDbContext : Microsoft.EntityFrameworkCore.DbContext
 {
-    public DbContext(DbContextOptions<DbContext> options)
+    public AppDbContext(DbContextOptions<AppDbContext> options)
         :base(options)
     {
     }
