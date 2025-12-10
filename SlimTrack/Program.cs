@@ -1,13 +1,20 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using SlimTrack.Data.Database;
+using SlimTrack.Services;
+using SlimTrack.Workers;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
 builder.AddNpgsqlDbContext<AppDbContext>("database");
+builder.AddRabbitMQClient("messaging");
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+
+builder.Services.AddSingleton<IEventPublisher, RabbitMQEventPublisher>();
+
+builder.Services.AddHostedService<OrderEventConsumerWorker>();
 
 var app = builder.Build();
 

@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SlimTrack.Data.Database;
 using SlimTrack.DTOs;
+using SlimTrack.Events;
 using SlimTrack.Models;
+using SlimTrack.Services;
 
 namespace SlimTrack.Controllers;
 
@@ -12,11 +14,16 @@ public class OrdersController : ControllerBase
 {
     private readonly ILogger<OrdersController> _logger;
     private readonly AppDbContext _dbContext;
+    private readonly IEventPublisher _eventPublisher;
 
-    public OrdersController(ILogger<OrdersController> logger, AppDbContext dbContext)
+    public OrdersController(
+        ILogger<OrdersController> logger,
+        AppDbContext dbContext,
+        IEventPublisher eventPublisher)
     {
         _logger = logger;
         _dbContext = dbContext;
+        _eventPublisher = eventPublisher;
     }
 
     [HttpPost]
@@ -48,6 +55,22 @@ public class OrdersController : ControllerBase
         await _dbContext.SaveChangesAsync();
 
         _logger.LogInformation("Order {OrderId} created and saved to PostgreSQL", order.Id);
+
+        var orderCreatedEvent = new OrderCreatedEvent
+        {
+            OrderId = order.Id,
+            Description = order.Description,
+            Status = order.CurrentStatus,
+            CreatedAt = order.CreatedAt
+        };
+
+        await _eventPublisher.PublishAsync(
+            exchange: "orders",
+            routingKey: "order.created",
+            @event: orderCreatedEvent
+        );
+
+        _logger.LogInformation("Order {OrderId} event published to RabbitMQ", order.Id);
 
         var response = MapToResponse(order);
         return CreatedAtAction(nameof(GetOrderById), new { id = order.Id }, response);
