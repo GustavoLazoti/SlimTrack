@@ -11,6 +11,7 @@
 - [Pré-requisitos](#pré-requisitos)
 - [Como Executar](#como-executar)
 - [Endpoints da API](#endpoints-da-api)
+- [Credênciais do PostgreSQL e RabbitMQ](#credênciais-do-postgresql-e-rabbitmq)
 
 ---
 
@@ -21,7 +22,7 @@ Sistema de rastreamento de pedidos que processa entregas de forma assíncrona, e
 ### Funcionalidades
 
 - Recebimento de pedidos via API REST
-- Processamento assíncrono do fluxo de entrega (separação → transporte → entrega)
+- Processamento assíncrono do fluxo de entrega (separação -> transporte -> entrega)
 - Emissão de eventos para cada mudança de status
 - Persistência confiável de pedidos e eventos
 - Consulta de histórico completo de eventos por pedido
@@ -30,11 +31,11 @@ Sistema de rastreamento de pedidos que processa entregas de forma assíncrona, e
 
 - Arquitetura orientada a eventos, desacoplada e escalável
 - Comunicação via filas de mensagens
-- **Consistência total**:  nenhum evento perdido mesmo em caso de falha
-- **Baixa latência** no processamento
-- **Resiliência**:  recuperação automática sem perda de dados
+- Consistência:  nenhum evento perdido mesmo em caso de falha
+- Baixa latência no processamento (Infelizmente o Redis não foi implementado a tempo, porém com ele seria bem mais eficiênte)
+- Resiliência:  recuperação automática sem perda de dados (Caso os containeres não sejam excluidos)
 - Idempotência e retry automático
-- Logs estruturados e monitoramento completo
+- Logs estruturados e monitoramento
 
 ---
 
@@ -69,7 +70,7 @@ Diagrama de Sequência do fluxo:
 
 **PostgreSQL**
 - Armazena pedidos, eventos e mensagens outbox
-- Garante consistência transacional (ACID)
+- ACID
 - Migrations aplicadas automaticamente na inicialização
 
 **RabbitMQ**
@@ -78,7 +79,7 @@ Diagrama de Sequência do fluxo:
 - Confirmação de entrega (publisher confirms)
 
 **Redis**
-- Cache distribuído (Não tive o tempo para utilizar ele)
+- Cache (Não tive o tempo para utilizar ele)
 
 **. NET Aspire**
 - Orquestração de containers (PostgreSQL, RabbitMQ, Redis)
@@ -106,7 +107,8 @@ Outro ponto importante que dscobri é o suporte robusto a transações ACID, ess
 Também possui biblioteca nativa ao Aspire.
 
 **Entity Framework Core**
-
+Responsável pelas Migrations automáticas aplicadas na inicialização com suporte nativo ao postgresqk, facilitando queries complicadas e relacionamentos!
+Claro, também manutenido pela microsoft.
 ---
 
 ## Pré-requisitos
@@ -116,7 +118,7 @@ Também possui biblioteca nativa ao Aspire.
 - **[.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)**
 - **[Docker Desktop](https://www.docker.com/products/docker-desktop)** 
 
-> **Importante:** Você **NÃO precisa** instalar PostgreSQL, RabbitMQ ou Redis localmente. O . NET Aspire automaticamente baixa as imagens Docker e gerencia os containers de forma automatizada.
+> **Importante:** Você **não precisa** instalar PostgreSQL, RabbitMQ ou Redis localmente. O . NET Aspire automaticamente baixa as imagens Docker e gerencia os containers de forma automatizada.
 
 
 ## Como Executar
@@ -305,3 +307,19 @@ Retorna uma lista paginada de todos os pedidos.
 | `4` | `Delivered` | Entregue | Final (após ~5s) |
 
 ---
+## Credênciais do PostgreSQL e RabbitMQ
+Para descobrir as credênciais, é necessário checar as variáveis de ambiente dos recursos no Aspire dashboard:
+### PostgreSQL
+<img width="1851" height="920" alt="image" src="https://github.com/user-attachments/assets/56a6815d-fabe-47da-8fe7-3d5e15f980dc" />
+
+
+### RabbitMQ
+<img width="1865" height="925" alt="image" src="https://github.com/user-attachments/assets/35303db9-14ff-4008-85d5-3a6410da6880" />
+
+
+Que é possível acessar seu próprio dashboard via:
+<img width="1863" height="751" alt="image" src="https://github.com/user-attachments/assets/1ce82383-3f3d-41ab-8c9b-ccbfbb915add" />
+
+Dashboard:
+<img width="1798" height="872" alt="image" src="https://github.com/user-attachments/assets/1211da56-3b35-42e7-aa64-335fceceb418" />
+
