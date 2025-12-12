@@ -1,18 +1,16 @@
 # SlimTrack
 
-> Sistema de gerenciamento de entregas com arquitetura orientada a eventos
+> Sistema de gerenciamento de entregas com arquitetura orientada a eventos.
+> Feito por: Gustavo Nunes Lazoti
 
 ## Índice
 
 - [Visão Geral](#visão-geral)
 - [Arquitetura](#arquitetura)
 - [Tecnologias Utilizadas](#tecnologias-utilizadas)
-- [Estratégias de Confiabilidade](#estratégias-de-confiabilidade)
 - [Pré-requisitos](#pré-requisitos)
 - [Como Executar](#como-executar)
 - [Endpoints da API](#endpoints-da-api)
-- [Monitoramento](#monitoramento)
-- [Estrutura do Projeto](#estrutura-do-projeto)
 
 ---
 
@@ -111,38 +109,199 @@ Também possui biblioteca nativa ao Aspire.
 
 ---
 
-## Estratégias de Confiabilidade
-
-
-
----
-
 ## Pré-requisitos
 
+### Obrigatórios
 
+- **[.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)**
+- **[Docker Desktop](https://www.docker.com/products/docker-desktop)** 
 
----
+> **Importante:** Você **NÃO precisa** instalar PostgreSQL, RabbitMQ ou Redis localmente. O . NET Aspire automaticamente baixa as imagens Docker e gerencia os containers de forma automatizada.
+
 
 ## Como Executar
+### Passo 1: Clonar o Repositório
 
+```bash
+git clone https://github.com/GustavoLazoti/SlimTrack.git
+cd SlimTrack
+```
 
+### Passo 2: Restaurar Dependências
+
+Baixe todos os pacotes NuGet definidos nos arquivos `.csproj`:
+
+```bash
+dotnet restore
+```
+
+Isso baixará automaticamente:
+- Entity Framework Core e PostgreSQL (Npgsql)
+- RabbitMQ
+- Bibliotecas do .NET Aspire
+- OpenTelemetry
+
+### Passo 3: Executar o Projeto
+
+**Opção A: Via Linha de Comando** (VS Code)
+
+```bash
+cd SlimTrack. AppHost
+dotnet run
+```
+
+**Opção B: Via Visual Studio 2022**
+
+1. Abra o arquivo `SlimTrack.slnx` no Visual Studio
+2. Defina `SlimTrack.AppHost` como projeto de inicialização
+3. Pressione **F5** ou clique em **Run**
 
 ---
+
+### Passo 4: Execução das etapas de configuração e Aspire Dashboard
+
+Aguarde o proceso inicializar containeres Docker, workers, migrations aplicadas, etc.
+
+
+O dashboard Aspire deve abrir no seu navegador padrão, com essa cara:
+<img width="1871" height="827" alt="image" src="https://github.com/user-attachments/assets/8938cef1-a986-43d2-9c5d-814b2e7979b5" />
+
+Pronto! Está operacional!
+
+### Posíveis erros:
+
+**Erro:  "Docker daemon is not running"**
+
+Solução: Inicie o Docker Desktop e aguarde até que esteja completamente inicializado.
+
+**Erro: "Cannot connect to database"**
+
+Causa: O container PostgreSQL ainda está inicializando ou a imagem ainda está sendo baixada. 
+
+Solução: O sistema já possui retry automático (10 tentativas com delay de 3s). Aguarde alguns segundos.  Se persistir: 
 
 ## Endpoints da API
+### Resumo dos Endpoints
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| `POST` | `/api/orders` | Criar um novo pedido |
+| `GET` | `/api/orders` | Listar todos os pedidos (paginado) |
+| `GET` | `/api/orders/{id}` | Consultar pedido por ID |
+| `GET` | `/api/orders/{id}/events` | Histórico de eventos do pedido |
+
+### 1. Criar Pedido
+
+**POST** `/api/orders`
+
+Cria um novo pedido e inicia o fluxo de processamento assíncrono. 
+
+**Request Body:**
+
+```json
+{
+  "description": "Descrição do pedido"
+}
+```
+
+**Response:** `201 Created`
+
+```json
+{
+  "id":  "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "description": "Descrição do pedido",
+  "currentStatus": 0,
+  "createdAt": "2025-12-12T10:30:00Z",
+  "updatedAt": "2025-12-12T10:30:00Z"
+}
+```
 
 
+### 2. Consultar Pedido por ID
 
----
+**GET** `/api/orders/{id}`
 
-## Monitoramento
+Retorna os detalhes de um pedido específico. 
 
+**Path Parameters:**
+- `id` (GUID) - ID do pedido
 
+**Response:** `200 OK`
 
----
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "description": "X",
+  "currentStatus": 2,
+  "createdAt":  "2025-12-12T10:30:00Z",
+  "updatedAt": "2025-12-12T10:35:20Z"
+}
+```
 
-## Estrutura do Projeto
+### 3. Consultar Histórico de Eventos
 
+**GET** `/api/orders/{id}/events`
 
+Retorna o histórico completo de eventos de um pedido, ordenado cronologicamente.
+
+**Response:** `200 OK`
+
+```json
+[
+  {
+    "id": "1a2b3c4d-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+    "orderId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "status": 0,
+    "message": "Pedido recebido com sucesso",
+    "timestamp": "2025-12-12T10:30:00Z"
+  },
+  {
+    "id":  "2b3c4d5e-6f7g-8h9i-0j1k-l2m3n4o5p6q7",
+    "orderId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "status": 1,
+    "message": "Pedido em processamento/separação",
+    "timestamp": "2025-12-12T10:30:03Z"
+  }
+]
+```
+
+### 4. Listar Todos os Pedidos
+
+**GET** `/api/orders`
+
+Retorna uma lista paginada de todos os pedidos. 
+
+**Query Parameters:**
+- `page` (int, opcional) - Número da página (padrão: 1)
+- `pageSize` (int, opcional) - Itens por página (padrão: 10, máx: 100)
+
+**Response:** `200 OK`
+
+```json
+{
+  "page": 1,
+  "pageSize":  10,
+  "total":  25,
+  "data":  [
+    {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "description":  "X",
+      "currentStatus": 4,
+      "createdAt": "2025-12-12T10:30:00Z",
+      "updatedAt": "2025-12-12T10:35:20Z"
+    }
+  ]
+}
+```
+
+### Status do Pedido (Enum)
+
+| Valor | Nome | Descrição | Transição |
+|-------|------|-----------|-----------|
+| `0` | `Received` | Pedido recebido | Inicial |
+| `1` | `Processing` | Em processamento/separação | Após ~3s |
+| `2` | `InTransit` | Em transporte | Após ~5s |
+| `3` | `OutForDelivery` | Saiu para entrega | Após ~5s |
+| `4` | `Delivered` | Entregue | Final (após ~5s) |
 
 ---
