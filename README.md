@@ -109,6 +109,7 @@ Também possui biblioteca nativa ao Aspire.
 **Entity Framework Core**
 Responsável pelas Migrations automáticas aplicadas na inicialização com suporte nativo ao postgresqk, facilitando queries complicadas e relacionamentos!
 Claro, também manutenido pela microsoft.
+
 ---
 
 ## Pré-requisitos
