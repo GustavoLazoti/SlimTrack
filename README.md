@@ -323,3 +323,18 @@ Que é possível acessar seu próprio dashboard via:
 Dashboard:
 <img width="1798" height="872" alt="image" src="https://github.com/user-attachments/assets/1211da56-3b35-42e7-aa64-335fceceb418" />
 
+## PostgreSQL
+
+É possível acessar via CLI:
+```bash
+docker ps
+```
+
+Ao localizar o ID do container de postgresql, basta acessar com:
+
+```bash
+docker exec -it {id} psql -U postgres -d database
+```
+
+E inserir a senha encontrada em:
+<img width="1851" height="916" alt="image" src="https://github.com/user-attachments/assets/5e294342-0cf5-4380-a451-d083c76707db" />
