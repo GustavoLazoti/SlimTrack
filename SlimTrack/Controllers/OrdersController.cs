@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using SlimTrack.Data.Database;
 using SlimTrack.DTOs;
+using SlimTrack.Events;
 using SlimTrack.Models;
+using SlimTrack.Services;
 
 namespace SlimTrack.Controllers;
 
@@ -9,16 +13,21 @@ namespace SlimTrack.Controllers;
 public class OrdersController : ControllerBase
 {
     private readonly ILogger<OrdersController> _logger;
-    private static readonly List<Order> _orders = [];
-    private static readonly object _lock = new();
+    private readonly AppDbContext _dbContext;
+    private readonly IEventPublisher _eventPublisher;
 
-    public OrdersController(ILogger<OrdersController> logger)
+    public OrdersController(
+        ILogger<OrdersController> logger,
+        AppDbContext dbContext,
+        IEventPublisher eventPublisher)
     {
         _logger = logger;
+        _dbContext = dbContext;
+        _eventPublisher = eventPublisher;
     }
 
     [HttpPost]
-    public IActionResult CreateOrder([FromBody] CreateOrderRequest request)
+    public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest request)
     {
         _logger.LogInformation("Receiving order creation request");
         
@@ -42,26 +51,45 @@ public class OrdersController : ControllerBase
 
         order.Events.Add(orderEvent);
 
-        lock (_lock)
+        var orderCreatedEvent = new OrderCreatedEvent
         {
-            _orders.Add(order);
-            _logger.LogInformation("Order added to list. Total orders: {Count}", _orders.Count);
-        }
+            OrderId = order.Id,
+            Description = order.Description,
+            Status = order.CurrentStatus,
+            CreatedAt = order.CreatedAt
+        };
 
-        _logger.LogInformation("Order {OrderId} created", order.Id);
+        var outboxMessage = new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            EventType = "order.created",
+            Payload = System.Text.Json.JsonSerializer.Serialize(orderCreatedEvent),
+            Published = false,
+            CreatedAt = DateTime.UtcNow,
+            RetryCount = 0
+        };
+
+        _dbContext.Orders.Add(order);
+        _dbContext.OutboxMessages.Add(outboxMessage);
+
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Order {OrderId} created and saved to PostgreSQL with outbox message {OutboxId}", 
+            order.Id, 
+            outboxMessage.Id
+        );
 
         var response = MapToResponse(order);
         return CreatedAtAction(nameof(GetOrderById), new { id = order.Id }, response);
     }
 
     [HttpGet("{id}")]
-    public IActionResult GetOrderById(Guid id)
+    public async Task<IActionResult> GetOrderById(Guid id)
     {
-        Order? order;
-        lock (_lock)
-        {
-            order = _orders.FirstOrDefault(o => o.Id == id);
-        }
+        var order = await _dbContext.Orders
+            .Include(o => o.Events)
+            .FirstOrDefaultAsync(o => o.Id == id);
 
         if (order == null)
         {
@@ -73,57 +101,55 @@ public class OrdersController : ControllerBase
     }
 
     [HttpGet("{id}/events")]
-    public IActionResult GetOrderEvents(Guid id)
+    public async Task<IActionResult> GetOrderEvents(Guid id)
     {
-        Order? order;
-        lock (_lock)
-        {
-            order = _orders.FirstOrDefault(o => o.Id == id);
-        }
-
-        if (order == null)
+        var orderExists = await _dbContext.Orders.AnyAsync(o => o.Id == id);
+        if (!orderExists)
         {
             return NotFound(new { message = "Pedido não encontrado" });
         }
 
-        var events = order.Events.Select(e => new OrderEventResponse
-        {
-            Id = e.Id,
-            OrderId = e.OrderId,
-            Status = e.Status,
-            Message = e.Message,
-            Timestamp = e.Timestamp
-        }).OrderBy(e => e.Timestamp);
+        var events = await _dbContext.OrderEvents
+            .Where(e => e.OrderId == id)
+            .OrderBy(e => e.Timestamp)
+            .Select(e => new OrderEventResponse
+            {
+                Id = e.Id,
+                OrderId = e.OrderId,
+                Status = e.Status,
+                Message = e.Message,
+                Timestamp = e.Timestamp
+            })
+            .ToListAsync();
 
         return Ok(events);
     }
 
     [HttpGet]
-    public IActionResult GetAllOrders([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    public async Task<IActionResult> GetAllOrders([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {
-        _logger.LogInformation("GetAllOrders called. Current total: {Count}", _orders.Count);
-        
         if (page < 1 || pageSize < 1 || pageSize > 100)
         {
             return BadRequest(new { message = "Parâmetros de paginação inválidos" });
         }
 
-        List<Order> orders;
-        lock (_lock)
-        {
-            orders = _orders
-                .OrderByDescending(o => o.CreatedAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
-        }
+        var total = await _dbContext.Orders.CountAsync();
+        
+        var orders = await _dbContext.Orders
+            .OrderByDescending(o => o.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        _logger.LogInformation("GetAllOrders returned {Count} orders from PostgreSQL (page {Page}, total {Total})", 
+            orders.Count, page, total);
 
         var response = orders.Select(MapToResponse);
         return Ok(new
         {
             page,
             pageSize,
-            total = _orders.Count,
+            total,
             data = response
         });
     }
