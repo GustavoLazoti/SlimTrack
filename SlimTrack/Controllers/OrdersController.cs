@@ -51,11 +51,6 @@ public class OrdersController : ControllerBase
 
         order.Events.Add(orderEvent);
 
-        _dbContext.Orders.Add(order);
-        await _dbContext.SaveChangesAsync();
-
-        _logger.LogInformation("Order {OrderId} created and saved to PostgreSQL", order.Id);
-
         var orderCreatedEvent = new OrderCreatedEvent
         {
             OrderId = order.Id,
@@ -64,13 +59,26 @@ public class OrdersController : ControllerBase
             CreatedAt = order.CreatedAt
         };
 
-        await _eventPublisher.PublishAsync(
-            exchange: "orders",
-            routingKey: "order.created",
-            @event: orderCreatedEvent
-        );
+        var outboxMessage = new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            EventType = "order.created",
+            Payload = System.Text.Json.JsonSerializer.Serialize(orderCreatedEvent),
+            Published = false,
+            CreatedAt = DateTime.UtcNow,
+            RetryCount = 0
+        };
 
-        _logger.LogInformation("Order {OrderId} event published to RabbitMQ", order.Id);
+        _dbContext.Orders.Add(order);
+        _dbContext.OutboxMessages.Add(outboxMessage);
+
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Order {OrderId} created and saved to PostgreSQL with outbox message {OutboxId}", 
+            order.Id, 
+            outboxMessage.Id
+        );
 
         var response = MapToResponse(order);
         return CreatedAtAction(nameof(GetOrderById), new { id = order.Id }, response);

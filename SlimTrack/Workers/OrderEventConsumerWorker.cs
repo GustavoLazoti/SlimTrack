@@ -6,6 +6,7 @@ using RabbitMQ.Client.Events;
 using SlimTrack.Data.Database;
 using SlimTrack.Events;
 using SlimTrack.Models;
+using SlimTrack.Services;
 
 namespace SlimTrack.Workers;
 
@@ -36,10 +37,16 @@ public class OrderEventConsumerWorker : BackgroundService
 
         try
         {
-            // Criar canal
+            // Create channel
             _channel = await _connection.CreateChannelAsync(cancellationToken: stoppingToken);
 
-            // Configurar QoS - processar uma mensagem por vez
+            // Vou até explicar em português essa parte:
+            // O BasicQos com prefetchCount = 1 significa que o consumidor vai receber apenas uma mensagem por vez
+            // e só vai receber a próxima mensagem quando der o ACK da mensagem atual.
+            // Isso é importante para garantir que a gente não sobrecarregue o consumidor e que ele processe as mensagens
+            // na ordem correta. Também fiquei com medo de meu computador não aguentar muitas mensagens ao mesmo tempo para
+            // diversos pedidos/workers.
+            // prefetchSize = 0 significa que não há limite de tamanho para as mensagens.
             await _channel.BasicQosAsync(
                 prefetchSize: 0,
                 prefetchCount: 1,
@@ -47,7 +54,6 @@ public class OrderEventConsumerWorker : BackgroundService
                 cancellationToken: stoppingToken
             );
 
-            // Declarar exchange (idempotente)
             await _channel.ExchangeDeclareAsync(
                 exchange: ExchangeName,
                 type: ExchangeType.Topic,
@@ -57,17 +63,15 @@ public class OrderEventConsumerWorker : BackgroundService
                 cancellationToken: stoppingToken
             );
 
-            // Declarar fila (idempotente)
             await _channel.QueueDeclareAsync(
                 queue: QueueName,
-                durable: true,        // ? Persiste no disco
+                durable: true,
                 exclusive: false,
                 autoDelete: false,
                 arguments: null,
                 cancellationToken: stoppingToken
             );
 
-            // Fazer binding (vincular fila ao exchange)
             await _channel.QueueBindAsync(
                 queue: QueueName,
                 exchange: ExchangeName,
@@ -83,24 +87,22 @@ public class OrderEventConsumerWorker : BackgroundService
                 RoutingKey
             );
 
-            // Criar consumer
+            // Create consumer
             var consumer = new AsyncEventingBasicConsumer(_channel);
             consumer.ReceivedAsync += async (sender, eventArgs) =>
             {
                 await ProcessMessageAsync(eventArgs, stoppingToken);
             };
 
-            // Iniciar consumo
             await _channel.BasicConsumeAsync(
                 queue: QueueName,
-                autoAck: false,  // ? Manual ACK (confiabilidade)
+                autoAck: false,
                 consumer: consumer,
                 cancellationToken: stoppingToken
             );
 
             _logger.LogInformation("OrderEventConsumerWorker started successfully. Waiting for messages...");
 
-            // Manter worker rodando
             await Task.Delay(Timeout.Infinite, stoppingToken);
         }
         catch (OperationCanceledException)
@@ -200,6 +202,17 @@ public class OrderEventConsumerWorker : BackgroundService
                 order.Id,
                 OrderStatus.Processing
             );
+
+            var eventPublisher = scope.ServiceProvider.GetRequiredService<IEventPublisher>();
+            var nextEvent = new OrderStatusChangedEvent
+            {
+                OrderId = order.Id,
+                OldStatus = OrderStatus.Received,
+                NewStatus = OrderStatus.Processing,
+                Message = "Pedido em processamento",
+                ChangedAt = DateTime.UtcNow
+            };
+            await eventPublisher.PublishAsync(ExchangeName, "order.processing", nextEvent);
 
             await _channel!.BasicAckAsync(eventArgs.DeliveryTag, multiple: false, cancellationToken);
         }

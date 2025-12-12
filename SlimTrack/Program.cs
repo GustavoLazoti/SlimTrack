@@ -14,7 +14,12 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddSingleton<IEventPublisher, RabbitMQEventPublisher>();
 
-builder.Services.AddHostedService<OrderEventConsumerWorker>();
+// Register background workers for order processing workflow
+builder.Services.AddHostedService<OutboxPublisherWorker>();      // Outbox Pattern
+builder.Services.AddHostedService<OrderEventConsumerWorker>();  // Received -> Processing
+builder.Services.AddHostedService<OrderTransitWorker>();         // Processing -> InTransit
+builder.Services.AddHostedService<OrderDeliveryWorker>();        // InTransit -> OutForDelivery
+builder.Services.AddHostedService<OrderCompletionWorker>();      // OutForDelivery -> Delivered
 
 var app = builder.Build();
 
@@ -42,7 +47,7 @@ using (var scope = app.Services.CreateScope())
             
             if (canConnect)
             {
-                logger.LogInformation("✅ DATABASE CONNECTION SUCCESSFUL!");
+                logger.LogInformation("DATABASE CONNECTION SUCCESSFUL!");
                 connected = true;
                 
                 // Check if tables exist
@@ -78,7 +83,7 @@ using (var scope = app.Services.CreateScope())
     
     if (!connected)
     {
-        logger.LogError("❌ FAILED TO CONNECT TO DATABASE AFTER {Retries} ATTEMPTS", retries);
+        logger.LogError("FAILED TO CONNECT TO DATABASE AFTER {Retries} ATTEMPTS", retries);
         logger.LogError("Application will exit. Please check: PostgreSQL container is running (check Aspire dashboard)");
         throw new InvalidOperationException("Cannot connect to database");
     }
@@ -86,8 +91,13 @@ using (var scope = app.Services.CreateScope())
     logger.LogInformation("========================================");
     logger.LogInformation("READY TO APPLY MIGRATIONS (if needed)");
     logger.LogInformation("========================================");
-    
-    // STEP 2: Apply migrations
+
+    //Apply migrations
+    // Essa etapa eu não conhecia muito bem e achei muito interessante. Basicamente, ao iniciar a aplicação,
+    // ela verifica se há migrações pendentes no banco de dados e as aplica automaticamente.
+    // Isso é útil para garantir que o esquema do banco de dados esteja sempre atualizado com a
+    // versão mais recente do código da aplicação, sem a necessidade de intervenção
+    // manual. Além de que quando alguém for rodar, não vai precisar se preocupar em rodar as migrations.
     try
     {
         logger.LogInformation("Checking for pending migrations...");
@@ -142,7 +152,6 @@ app.Use(async (context, next) =>
     }
 });
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();

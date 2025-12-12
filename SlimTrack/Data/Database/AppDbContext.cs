@@ -12,6 +12,7 @@ public class AppDbContext : Microsoft.EntityFrameworkCore.DbContext
 
     public DbSet<Order> Orders{ get; set; }
     public DbSet<OrderEvent> OrderEvents => Set<OrderEvent>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -64,6 +65,32 @@ public class AppDbContext : Microsoft.EntityFrameworkCore.DbContext
             entity.HasIndex(e => e.Timestamp);
         });
 
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.EventType)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(e => e.Payload)
+                .IsRequired();
+
+            entity.Property(e => e.Published)
+                .IsRequired();
+
+            entity.Property(e => e.CreatedAt)
+                .IsRequired();
+
+            entity.Property(e => e.RetryCount)
+                .IsRequired();
+
+            entity.Property(e => e.ErrorMessage)
+                .HasMaxLength(2000);
+
+            entity.HasIndex(e => new { e.Published, e.CreatedAt });
+            entity.HasIndex(e => e.CreatedAt);
+        });
     }
 }
 
