@@ -1,341 +1,747 @@
-# SlimTrack
+# CallsTrend
 
-> Sistema de gerenciamento de entregas com arquitetura orientada a eventos.
-> Feito por: Gustavo Nunes Lazoti
+Sistema acadêmico de Help Desk com triagem automática de chamados por IA.
 
-## Índice
+## 1. Entendimento consolidado do projeto
 
-- [Visão Geral](#visão-geral)
-- [Arquitetura](#arquitetura)
-- [Tecnologias Utilizadas](#tecnologias-utilizadas)
-- [Pré-requisitos](#pré-requisitos)
-- [Como Executar](#como-executar)
-- [Endpoints da API](#endpoints-da-api)
-- [Credênciais do PostgreSQL e RabbitMQ](#credênciais-do-postgresql-e-rabbitmq)
+### 1.1 Objetivo do produto
 
----
+O projeto tem como foco reduzir a triagem manual inicial de chamados técnicos. A ideia central é permitir que o usuário abra um chamado com texto livre e que o sistema atribua automaticamente:
 
-## Visão Geral
+- uma **categoria**;
+- uma **prioridade**;
+- um **status inicial coerente com o fluxo**.
 
-Sistema de rastreamento de pedidos que processa entregas de forma assíncrona, emitindo eventos a cada mudança de status. 
+O administrador continua responsável pela governança do atendimento, podendo revisar, corrigir e evoluir o chamado ao longo do processo.
 
-### Funcionalidades
+### 1.2 Escopo funcional
 
-- Recebimento de pedidos via API REST
-- Processamento assíncrono do fluxo de entrega (separação -> transporte -> entrega)
-- Emissão de eventos para cada mudança de status
-- Persistência confiável de pedidos e eventos
-- Consulta de histórico completo de eventos por pedido
+Os requisitos funcionais descritos no material original levam a um fluxo principal bem definido:
 
-### Requisitos Atendidos
+1. cadastro e autenticação de usuários;
+2. abertura de chamado com título e descrição;
+3. classificação automática por categoria;
+4. classificação automática por prioridade;
+5. consulta do status do chamado;
+6. gestão administrativa dos chamados;
+7. atualização do status de atendimento.
 
-- Arquitetura orientada a eventos, desacoplada e escalável
-- Comunicação via filas de mensagens
-- Consistência:  nenhum evento perdido mesmo em caso de falha
-- Baixa latência no processamento (Infelizmente o Redis não foi implementado a tempo, porém com ele seria bem mais eficiênte)
-- Resiliência:  recuperação automática sem perda de dados (Caso os containeres não sejam excluidos)
-- Idempotência e retry automático
-- Logs estruturados e monitoramento
+### 1.3 Escopo não funcional
 
----
+O README original deixa claro que o projeto deve ser:
 
-## Arquitetura
-Fluxo Workers/Events:
-<img width="1377" height="386" alt="fluxoWorkers drawio" src="https://github.com/user-attachments/assets/55261086-a680-4d3c-a767-3faa30c3e43f" />
+- simples de usar;
+- acessível via navegador;
+- implementado com tecnologias gratuitas ou open-source;
+- demonstrável em ambiente local;
+- organizado com boas práticas de arquitetura e versionamento.
 
-Diagrama de Sequência do fluxo:
-<img width="2550" height="1558" alt="diagramaDeSequencia" src="https://github.com/user-attachments/assets/bcea3efe-c667-4f51-8994-5e74c3330dd1" />
+Além disso, a triagem automática deve ter caráter **demonstrativo**, não comercial, e responder em tempo adequado para uma apresentação acadêmica.
 
-### Componentes Principais
+### 1.4 Limites do escopo
 
-**API REST**
-- Recebe requisições HTTP
-- Valida dados de entrada
-- Persiste pedidos e eventos no banco
-- Salva eventos na tabela Outbox
+Ficam fora do escopo nesta fase:
 
-**OutboxPublisher Worker**
-- Executa periodicamente (a cada 5 segundos)
-- Busca eventos não publicados na tabela Outbox
-- Publica no RabbitMQ
-- Marca como publicado após confirmação
+- integrações com ferramentas corporativas reais;
+- notificações por e-mail, SMS ou apps externos;
+- SLAs reais de operação;
+- alta disponibilidade e produção;
+- autenticação corporativa avançada;
+- monitoramento em tempo real.
 
-**Background Workers**
-- Cada worker é responsável por uma transição de estado
-- Consome eventos de filas específicas
-- Simulam cada etapa (Possuem delay hardcoded)
-- Atualiza estado do pedido no banco
-- Publica evento para próxima etapa
-- Envia ACK apenas após sucesso
+### 1.5 Arquitetura pretendida
 
-**PostgreSQL**
-- Armazena pedidos, eventos e mensagens outbox
-- ACID
-- Migrations aplicadas automaticamente na inicialização
+O material modela a solução em **4 camadas**:
 
-**RabbitMQ**
-- Filas duráveis para cada etapa do fluxo
-- Mensagens persistentes (sobrevivem a reinicializações, a não ser que o docker seja excluido)
-- Confirmação de entrega (publisher confirms)
+1. **Apresentação**: interface web do usuário e painel administrativo;
+2. **Aplicação / Backend**: autenticação, regras de negócio, orquestração dos chamados;
+3. **Inteligência Artificial**: módulo isolado responsável pela classificação textual;
+4. **Dados**: persistência de usuários, chamados e logs.
 
-**Redis**
-- Cache (Não tive o tempo para utilizar ele)
+Essa arquitetura favorece evolução incremental e está alinhada com uma implementação baseada em **SOLID**, principalmente por permitir:
 
-**. NET Aspire**
-- Orquestração de containers (PostgreSQL, RabbitMQ, Redis)
-- Configuração automática de conexões
-- Dashboard de observabilidade integrado
-  
----
+- separar responsabilidades;
+- isolar contratos entre camadas;
+- trocar a implementação da triagem sem reescrever o domínio;
+- manter baixo acoplamento entre API, regras de negócio e infraestrutura.
 
-## Tecnologias Utilizadas
+### 1.6 Stack sugerida pelo próprio material
 
-**. NET Aspire**
-A escolha do Aspire foi pensada em ser uma frente inovadora e mantida pela própria Microsoft, com diversos benefícios.
-O principal que reconheci é a capacidade de descobrir as diferentes dependências (como RabbitMQ, Redis, PostgreSQL) e, além da conexão, realizar a inicialização automática via Docker.
-Esse ponto é muito benéfico para velocidade de desenvolvimento (não tive que perder tempo fazendo essas configurações), mas também no momento que alguém for testar o sistema, não terá que passar por muitas preocupações.
-Sem contar com o dasboard do Aspire que pode ser muito mais explorado, cujo adiciona um grau de observabilidade muito interessante para o processo.
+O README aponta a seguinte direção tecnológica:
 
-**RabbitMQ**
-Foi escolhido por ser reconhecido entre o mundo de desenvolvimento e por possuir biblioteca nativa do Aspire, facilitando o processo de configuração.
-A gestão que as filas do RabbitMQ entregam é importante para o projeto:  garante entrega confiável de mensagens através de confirmações (ACKs) e permite reprocessamento automático em caso de falha (NACK com requeue).
-Pensando no ponto do documento em relação a "Persistência confiável de pedidos e eventos", as mensagens são persistentes e as filas são duráveis, garantindo que nenhum evento seja perdido mesmo em caso de reinicialização do broker.
+- **Frontend**: React.js;
+- **Backend**: Python com FastAPI ou Flask;
+- **Módulo de IA**: Scikit-learn ou spaCy;
+- **Banco de dados**: PostgreSQL ou SQLite.
 
-**PostgreSQL**
-O banco de dados, nesse caso, não é uma decisão tão preocupante a nível de aplicação, porém pensei nele em questão de escalabilidad do processo, já que pode escalar bem.
-Outro ponto importante que dscobri é o suporte robusto a transações ACID, essencial para garantir a consistência entre a gravação do pedido e o registro do evento no Outbox.
-Também possui biblioteca nativa ao Aspire.
+### 1.7 Interpretação prática para a execução
 
-**Entity Framework Core**
-Responsável pelas Migrations automáticas aplicadas na inicialização com suporte nativo ao postgresqk, facilitando queries complicadas e relacionamentos!
-Claro, também manutenido pela microsoft.
+Com base no escopo e na arquitetura, a evolução mais fluida do projeto é:
+
+1. provar o fluxo principal com uma **POC funcional**;
+2. manter a triagem como um módulo substituível;
+3. validar o processo fim a fim antes de investir em autenticação robusta e frontend completo;
+4. só depois acoplar persistência relacional definitiva e modelo de IA treinado.
 
 ---
 
-## Pré-requisitos
+## 2. Steps de desenvolvimento para um projeto fluido
 
-### Obrigatórios
+## Fase 0 — Fundação do produto
 
-- **[.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)**
-- **[Docker Desktop](https://www.docker.com/products/docker-desktop)** 
+- consolidar escopo, regras de negócio e atores;
+- transformar a documentação acadêmica em backlog técnico;
+- definir convenções de pastas, camadas e contratos;
+- decidir o menor recorte demonstrável da aplicação.
 
-> **Importante:** Você **não precisa** instalar PostgreSQL, RabbitMQ ou Redis localmente. O . NET Aspire automaticamente baixa as imagens Docker e gerencia os containers de forma automatizada.
+## Fase 1 — POC do fluxo principal
 
+- criar backend inicial;
+- expor endpoint para abertura de chamados;
+- implementar triagem automática demonstrativa;
+- persistir em memória ou SQLite simples;
+- listar chamados e permitir atualização administrativa;
+- documentar execução local.
 
-## Como Executar
-### Passo 1: Clonar o Repositório
+**Objetivo da fase:** provar que o coração do produto funciona.
+
+## Fase 2 — Consolidação do domínio
+
+- introduzir autenticação básica;
+- separar claramente entidades, casos de uso e adaptadores;
+- registrar logs de classificação;
+- padronizar enums, DTOs e contratos de resposta;
+- ampliar testes automatizados de domínio e API.
+
+**Objetivo da fase:** reduzir débito técnico e preparar escalabilidade.
+
+## Fase 3 — Interface web
+
+- criar tela de abertura de chamado;
+- criar tela de acompanhamento do usuário;
+- criar painel administrativo;
+- integrar frontend com a API;
+- tratar feedback de carregamento, sucesso e erro.
+
+**Objetivo da fase:** tornar a experiência demonstrável para apresentação.
+
+## Fase 4 — Persistência e auditoria
+
+- migrar para banco relacional definitivo;
+- armazenar usuários, chamados e histórico;
+- registrar confiança e justificativa da classificação;
+- permitir trilha de auditoria das correções administrativas.
+
+**Objetivo da fase:** aproximar a solução do desenho arquitetural completo.
+
+## Fase 5 — Evolução real do módulo de IA
+
+- substituir heurísticas por pipeline de NLP;
+- preparar conjunto de exemplos;
+- treinar e validar modelo;
+- medir precisão por categoria e prioridade;
+- manter fallback para classificação segura.
+
+**Objetivo da fase:** evoluir a POC para um classificador academicamente consistente.
+
+## Fase 6 — Qualidade de entrega
+
+- ampliar cobertura de testes;
+- revisar segurança mínima;
+- revisar performance de triagem;
+- preparar roteiro de apresentação;
+- fechar documentação final da disciplina.
+
+---
+
+## 3. Primeira POC iniciada nesta branch
+
+Esta branch inicia a aplicação com um recorte pequeno, mas demonstrável:
+
+- backend em **FastAPI**;
+- arquitetura em camadas com foco em **SOLID**;
+- domínio de chamados separado da infraestrutura;
+- serviço de classificação demonstrativo baseado em palavras-chave;
+- endpoints para criar, listar e atualizar chamados;
+- testes automatizados do fluxo principal.
+
+### Decisões desta POC
+
+- a triagem é **heurística**, para acelerar a prova de conceito;
+- a persistência está **em memória**, para reduzir complexidade inicial;
+- autenticação completa foi deixada para a próxima fase;
+- a API foi priorizada antes do frontend, porque ela representa o núcleo do sistema.
+
+### Como SOLID foi aplicado
+
+- **S**: entidades, casos de uso, API e repositório estão separados;
+- **O**: o classificador pode ser substituído sem alterar os casos de uso;
+- **L**: implementações concretas respeitam os contratos do domínio;
+- **I**: portas pequenas e específicas para repositório e classificador;
+- **D**: casos de uso dependem de abstrações, não de classes concretas.
+
+---
+
+## 4. Como executar a POC
+
+### Requisitos
+
+- Python 3.11+
+
+### Instalação
 
 ```bash
-git clone https://github.com/GustavoLazoti/SlimTrack.git
-cd SlimTrack
+cd /home/runner/work/CallsTrend/CallsTrend
+python -m pip install -e .[dev]
 ```
 
-### Passo 2: Restaurar Dependências
-
-Baixe todos os pacotes NuGet definidos nos arquivos `.csproj`:
+### Subir a API
 
 ```bash
-dotnet restore
+cd /home/runner/work/CallsTrend/CallsTrend
+uvicorn callstrend.main:app --app-dir src --reload
 ```
 
-Isso baixará automaticamente:
-- Entity Framework Core e PostgreSQL (Npgsql)
-- RabbitMQ
-- Bibliotecas do .NET Aspire
-- OpenTelemetry
-
-### Passo 3: Executar o Projeto
-
-**Opção A: Via Linha de Comando** (VS Code)
+### Rodar testes
 
 ```bash
-cd SlimTrack. AppHost
-dotnet run
+cd /home/runner/work/CallsTrend/CallsTrend
+pytest
 ```
 
-**Opção B: Via Visual Studio 2022**
+### Endpoints da POC
 
-1. Abra o arquivo `SlimTrack.slnx` no Visual Studio
-2. Defina `SlimTrack.AppHost` como projeto de inicialização
-3. Pressione **F5** ou clique em **Run**
+- `GET  /health`
+- `POST /api/v1/tickets`
+- `GET  /api/v1/tickets`
+- `PATCH /api/v1/tickets/{ticket_id}`
 
 ---
 
-### Passo 4: Execução das etapas de configuração e Aspire Dashboard
+## API — Documentação dos Endpoints
 
-Aguarde o proceso inicializar containeres Docker, workers, migrations aplicadas, etc.
+### Swagger interativo
 
+Com a API em execução, acesse a documentação interativa nos endereços abaixo:
 
-O dashboard Aspire deve abrir no seu navegador padrão, com essa cara:
-<img width="1871" height="827" alt="image" src="https://github.com/user-attachments/assets/8938cef1-a986-43d2-9c5d-814b2e7979b5" />
+| Interface | URL |
+|---|---|
+| **Swagger UI** (recomendado) | `http://localhost:8000/docs` |
+| **ReDoc** | `http://localhost:8000/redoc` |
+| **OpenAPI JSON** | `http://localhost:8000/openapi.json` |
 
-Pronto! Está operacional!
+Arquivo separado (somente API): `src/callstrend/api/doc/swagger.md`
 
-### Posíveis erros:
+---
 
-**Erro:  "Docker daemon is not running"**
+### Enums e valores permitidos
 
-Solução: Inicie o Docker Desktop e aguarde até que esteja completamente inicializado.
+| Enum | Campo | Valores aceitos |
+|---|---|---|
+| **Categoria** | `category` | `Hardware`, `Software`, `Rede`, `Acesso`, `Outros` |
+| **Prioridade** | `priority` | `Baixa`, `Media`, `Alta` |
+| **Status** | `status` | `EmTriagem`, `Aberto`, `EmAtendimento`, `Resolvido`, `Fechado` |
 
-**Erro: "Cannot connect to database"**
+---
 
-Causa: O container PostgreSQL ainda está inicializando ou a imagem ainda está sendo baixada. 
+### GET /health
 
-Solução: O sistema já possui retry automático (10 tentativas com delay de 3s). Aguarde alguns segundos.  Se persistir: 
+Verifica se a API está no ar.
 
-## Endpoints da API
-### Resumo dos Endpoints
+**Autenticação:** não necessária
 
-| Método | Endpoint | Descrição |
-|--------|----------|-----------|
-| `POST` | `/api/orders` | Criar um novo pedido |
-| `GET` | `/api/orders` | Listar todos os pedidos (paginado) |
-| `GET` | `/api/orders/{id}` | Consultar pedido por ID |
-| `GET` | `/api/orders/{id}/events` | Histórico de eventos do pedido |
-
-### 1. Criar Pedido
-
-**POST** `/api/orders`
-
-Cria um novo pedido e inicia o fluxo de processamento assíncrono. 
-
-**Request Body:**
-
+**Response 200 — OK**
 ```json
 {
-  "description": "Descrição do pedido"
+  "status": "ok"
 }
 ```
 
-**Response:** `201 Created`
+---
+
+### POST /api/v1/tickets
+
+Abre um novo chamado técnico e executa a triagem automática por IA.
+
+**Autenticação:** não necessária (fase 1 — POC)
+
+#### Fluxo interno
+
+1. O chamado é registrado com status `EmTriagem`.
+2. O módulo de IA analisa título e descrição via palavras-chave ponderadas.
+3. O chamado é atualizado para `Aberto` com categoria e prioridade inferidas.
+4. A resposta retorna o chamado classificado.
+
+#### Request body
 
 ```json
 {
-  "id":  "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "description": "Descrição do pedido",
-  "currentStatus": 0,
-  "createdAt": "2025-12-12T10:30:00Z",
-  "updatedAt": "2025-12-12T10:30:00Z"
+  "title": "VPN sem conectar",
+  "description": "Não consigo acessar o sistema interno pela VPN desde a manhã.",
+  "requester_name": "Maria Silva",
+  "requester_email": "maria@empresa.com"
 }
 ```
 
+| Campo | Tipo | Obrigatório | Regras |
+|---|---|---|---|
+| `title` | `string` | ✅ | 3–120 caracteres |
+| `description` | `string` | ✅ | 10–2000 caracteres |
+| `requester_name` | `string` | ✅ | 3–80 caracteres |
+| `requester_email` | `string` | ✅ | 5–160 caracteres |
 
-### 2. Consultar Pedido por ID
-
-**GET** `/api/orders/{id}`
-
-Retorna os detalhes de um pedido específico. 
-
-**Path Parameters:**
-- `id` (GUID) - ID do pedido
-
-**Response:** `200 OK`
+#### Response 201 — Created
 
 ```json
 {
   "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "description": "X",
-  "currentStatus": 2,
-  "createdAt":  "2025-12-12T10:30:00Z",
-  "updatedAt": "2025-12-12T10:35:20Z"
+  "title": "VPN sem conectar",
+  "description": "Não consigo acessar o sistema interno pela VPN desde a manhã.",
+  "requester_name": "Maria Silva",
+  "requester_email": "maria@empresa.com",
+  "created_at": "2026-05-12T21:00:00Z",
+  "status": "Aberto",
+  "category": "Rede",
+  "priority": "Alta",
+  "classification_confidence": 0.83,
+  "classification_rationale": "Categoria sugerida: Rede (score 2). Prioridade sugerida: Alta (score 2)."
 }
 ```
 
-### 3. Consultar Histórico de Eventos
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `id` | `string` (UUID v4) | Identificador único do chamado |
+| `title` | `string` | Título informado |
+| `description` | `string` | Descrição informada |
+| `requester_name` | `string` | Nome do solicitante |
+| `requester_email` | `string` | E-mail do solicitante |
+| `created_at` | `datetime` (ISO 8601 UTC) | Data/hora de abertura |
+| `status` | `string` (enum) | Status atual do chamado |
+| `category` | `string` (enum) | Categoria atribuída pela IA |
+| `priority` | `string` (enum) | Prioridade atribuída pela IA |
+| `classification_confidence` | `float` (0.0–1.0) | Nível de confiança da classificação |
+| `classification_rationale` | `string` | Justificativa textual da IA |
 
-**GET** `/api/orders/{id}/events`
+#### Outros códigos
 
-Retorna o histórico completo de eventos de um pedido, ordenado cronologicamente.
+| Código | Situação |
+|---|---|
+| `422 Unprocessable Entity` | Campos inválidos ou ausentes |
 
-**Response:** `200 OK`
+---
+
+### GET /api/v1/tickets
+
+Retorna todos os chamados registrados com sua classificação atual.
+
+**Autenticação:** não necessária (fase 1 — POC)
+
+#### Response 200 — OK
+
+Array de objetos `TicketResponse` (mesma estrutura do `POST`).
 
 ```json
 [
   {
-    "id": "1a2b3c4d-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
-    "orderId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-    "status": 0,
-    "message": "Pedido recebido com sucesso",
-    "timestamp": "2025-12-12T10:30:00Z"
-  },
-  {
-    "id":  "2b3c4d5e-6f7g-8h9i-0j1k-l2m3n4o5p6q7",
-    "orderId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-    "status": 1,
-    "message": "Pedido em processamento/separação",
-    "timestamp": "2025-12-12T10:30:03Z"
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "title": "VPN sem conectar",
+    "description": "Não consigo acessar o sistema interno pela VPN desde a manhã.",
+    "requester_name": "Maria Silva",
+    "requester_email": "maria@empresa.com",
+    "created_at": "2026-05-12T21:00:00Z",
+    "status": "Aberto",
+    "category": "Rede",
+    "priority": "Alta",
+    "classification_confidence": 0.83,
+    "classification_rationale": "Categoria sugerida: Rede (score 2). Prioridade sugerida: Alta (score 2)."
   }
 ]
 ```
 
-### 4. Listar Todos os Pedidos
+Quando não há chamados: retorna `[]`.
 
-**GET** `/api/orders`
+---
 
-Retorna uma lista paginada de todos os pedidos. 
+### PATCH /api/v1/tickets/{ticket_id}
 
-**Query Parameters:**
-- `page` (int, opcional) - Número da página (padrão: 1)
-- `pageSize` (int, opcional) - Itens por página (padrão: 10, máx: 100)
+Atualiza um chamado existente — uso administrativo.
 
-**Response:** `200 OK`
+**Autenticação:** não necessária (fase 1 — POC)
+
+#### Path parameter
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `ticket_id` | `string` (UUID) | ID do chamado a ser atualizado |
+
+#### Request body
+
+Todos os campos são **opcionais**. Apenas os campos enviados serão alterados.
 
 ```json
 {
-  "page": 1,
-  "pageSize":  10,
-  "total":  25,
-  "data":  [
-    {
-      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-      "description":  "X",
-      "currentStatus": 4,
-      "createdAt": "2025-12-12T10:30:00Z",
-      "updatedAt": "2025-12-12T10:35:20Z"
-    }
-  ]
+  "status": "EmAtendimento",
+  "category": "Rede",
+  "priority": "Alta"
 }
 ```
 
-### Status do Pedido (Enum)
+| Campo | Tipo | Obrigatório | Valores aceitos |
+|---|---|---|---|
+| `status` | `string` (enum) | ❌ | `EmTriagem`, `Aberto`, `EmAtendimento`, `Resolvido`, `Fechado` |
+| `category` | `string` (enum) | ❌ | `Hardware`, `Software`, `Rede`, `Acesso`, `Outros` |
+| `priority` | `string` (enum) | ❌ | `Baixa`, `Media`, `Alta` |
 
-| Valor | Nome | Descrição | Transição |
-|-------|------|-----------|-----------|
-| `0` | `Received` | Pedido recebido | Inicial |
-| `1` | `Processing` | Em processamento/separação | Após ~3s |
-| `2` | `InTransit` | Em transporte | Após ~5s |
-| `3` | `OutForDelivery` | Saiu para entrega | Após ~5s |
-| `4` | `Delivered` | Entregue | Final (após ~5s) |
+#### Response 200 — OK
+
+Objeto `TicketResponse` com os dados atualizados.
+
+#### Outros códigos
+
+| Código | Situação |
+|---|---|
+| `404 Not Found` | `ticket_id` não encontrado |
+| `422 Unprocessable Entity` | Valor de enum inválido |
 
 ---
-## Credênciais do PostgreSQL e RabbitMQ
-Para descobrir as credênciais, é necessário checar as variáveis de ambiente dos recursos no Aspire dashboard:
-### PostgreSQL
-<img width="1851" height="920" alt="image" src="https://github.com/user-attachments/assets/56a6815d-fabe-47da-8fe7-3d5e15f980dc" />
 
+### Exemplos com curl
 
-### RabbitMQ
-<img width="1865" height="925" alt="image" src="https://github.com/user-attachments/assets/35303db9-14ff-4008-85d5-3a6410da6880" />
-
-
-Que é possível acessar seu próprio dashboard via:
-<img width="1863" height="751" alt="image" src="https://github.com/user-attachments/assets/1ce82383-3f3d-41ab-8c9b-ccbfbb915add" />
-
-Dashboard:
-<img width="1798" height="872" alt="image" src="https://github.com/user-attachments/assets/1211da56-3b35-42e7-aa64-335fceceb418" />
-
-## PostgreSQL
-
-É possível acessar via CLI:
+**Abrir chamado:**
 ```bash
-docker ps
+curl -X POST http://localhost:8000/api/v1/tickets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Impressora não imprime",
+    "description": "A impressora do setor financeiro parou de funcionar após atualização do driver.",
+    "requester_name": "Carlos Mendes",
+    "requester_email": "carlos@empresa.com"
+  }'
 ```
 
-Ao localizar o ID do container de postgresql, basta acessar com:
-
+**Listar chamados:**
 ```bash
-docker exec -it {id} psql -U postgres -d database
+curl http://localhost:8000/api/v1/tickets
 ```
 
-E inserir a senha encontrada em:
-<img width="1851" height="916" alt="image" src="https://github.com/user-attachments/assets/5e294342-0cf5-4380-a451-d083c76707db" />
+**Atualizar status e corrigir prioridade:**
+```bash
+curl -X PATCH http://localhost:8000/api/v1/tickets/{ticket_id} \
+  -H "Content-Type: application/json" \
+  -d '{"status": "EmAtendimento", "priority": "Alta"}'
+```
+
+---
+
+## 5. Próximos passos recomendados
+
+1. adicionar cadastro e autenticação;
+2. persistir chamados em SQLite;
+3. registrar logs de classificação;
+4. criar frontend para usuário e administrador;
+5. trocar o classificador heurístico por modelo de NLP;
+6. ampliar histórico e auditoria administrativa.
+
+---
+
+## 6. Base conceitual do projeto
+
+## 6.1 Entregas acadêmicas esperadas
+
+- TAP;
+- cronograma inicial;
+- declaração de escopo;
+- EAP/WBS;
+- requisitos funcionais e não funcionais;
+- diagramas do sistema;
+- protótipo funcional;
+- módulo de triagem automática com IA;
+- relatório de testes;
+- documentação final.
+
+## 6.2 Requisitos funcionais de referência
+
+- **RF01** – cadastro e autenticação;
+- **RF02** – abertura de chamados com descrição textual;
+- **RF03** – classificação automática por categoria;
+- **RF04** – classificação automática por prioridade;
+- **RF05** – acompanhamento do status;
+- **RF06** – gestão administrativa;
+- **RF07** – atualização do status do chamado.
+
+## 6.3 Requisitos não funcionais de referência
+
+- interface simples e intuitiva;
+- resposta adequada da triagem;
+- uso de tecnologias open-source;
+- acesso via navegador;
+- organização do código e versionamento.
+
+## 6.4 Critérios de aceitação de referência
+
+- as funcionalidades do fluxo principal devem estar implementadas;
+- a triagem automática precisa ser demonstrável;
+- categoria e prioridade devem ser visíveis;
+- o sistema deve funcionar localmente;
+- a documentação deve estar organizada.
+
+## 6.5 Restrições e premissas
+
+- desenvolvimento individual;
+- orçamento zero;
+- base de dados reduzida ou simulada;
+- uso acadêmico;
+- ambiente local;
+- IA com caráter demonstrativo.
+
+---
+
+## 7. Diagramas
+
+## 7.1 Diagrama de Classes
+
+```mermaid
+classDiagram
+direction LR
+
+class Usuario {
+  +UUID id
+  +string nome
+  +string email
+  +string senhaHash
+  +autenticar(email, senha)
+  +abrirChamado(titulo, descricao)
+  +consultarChamados()
+}
+
+class Administrador {
+  +validarClassificacao(chamadoId)
+  +corrigirCategoria(chamadoId, categoria)
+  +corrigirPrioridade(chamadoId, prioridade)
+  +alterarStatus(chamadoId, status)
+  +visualizarPainel()
+}
+
+Usuario <|-- Administrador
+
+class Chamado {
+  +UUID id
+  +string titulo
+  +string descricao
+  +datetime dataHoraAbertura
+  +StatusChamado status
+  +Categoria categoria
+  +Prioridade prioridade
+  +registrar()
+  +atualizarStatus(status)
+  +atualizarClassificacao(categoria, prioridade)
+}
+
+class ClassificacaoIA {
+  +Categoria categoriaSugerida
+  +Prioridade prioridadeSugerida
+  +float confianca
+  +datetime dataHoraClassificacao
+}
+
+class LogClassificacao {
+  +UUID id
+  +datetime dataHora
+  +string textoEntrada
+  +Categoria categoriaGerada
+  +Prioridade prioridadeGerada
+  +float tempoProcessamento
+  +string observacao
+}
+
+class Backend {
+  +abrirChamado(usuarioId, titulo, descricao)
+  +solicitarTriagem(texto)
+  +salvarChamado(chamado)
+  +autenticarUsuario(email, senha)
+  +atualizarChamado(chamadoId, dados)
+}
+
+class ModuloIA {
+  +classificarChamado(titulo, descricao)
+  +processarTexto(texto)
+}
+
+class AutenticacaoService {
+  +login(email, senha)
+  +gerarHash(senha)
+  +validarSenha(senha, hash)
+}
+
+class UsuarioRepository {
+  +salvar(usuario)
+  +buscarPorEmail(email)
+  +buscarPorId(id)
+}
+
+class ChamadoRepository {
+  +salvar(chamado)
+  +buscarPorId(id)
+  +listarPorUsuario(usuarioId)
+  +atualizar(chamado)
+}
+
+class LogRepository {
+  +salvar(log)
+}
+
+class Categoria {
+  <<enumeration>>
+  Hardware
+  Software
+  Rede
+  Acesso
+  Outros
+}
+
+class Prioridade {
+  <<enumeration>>
+  Baixa
+  Media
+  Alta
+}
+
+class StatusChamado {
+  <<enumeration>>
+  Aberto
+  EmTriagem
+  EmAtendimento
+  Resolvido
+  Fechado
+}
+
+Usuario "1" --> "0..*" Chamado : abre
+Chamado "1" --> "0..1" ClassificacaoIA : possui
+Chamado "1" --> "0..*" LogClassificacao : gera
+
+Backend --> ModuloIA : solicita classificação
+Backend --> ChamadoRepository : persiste chamado
+Backend --> UsuarioRepository : consulta usuário
+Backend --> LogRepository : registra logs
+Backend --> AutenticacaoService : autentica
+
+ModuloIA --> ClassificacaoIA : produz
+AutenticacaoService --> Usuario : valida acesso
+Administrador --> Chamado : gerencia
+```
+
+## 7.2 Diagrama de Sequência
+
+```mermaid
+sequenceDiagram
+autonumber
+actor U as Usuário Final
+participant W as Interface Web
+participant B as Backend
+participant IA as Módulo de IA
+participant DB as Banco de Dados
+actor A as Administrador
+
+U->>W: Preenche título e descrição do chamado
+W->>B: enviarChamado(titulo, descricao, usuarioId)
+
+B->>B: validarDados()
+B->>DB: registrar chamado(status=EmTriagem, dataHoraAbertura)
+DB-->>B: chamadoId
+
+B->>IA: classificarChamado(titulo, descricao)
+IA->>IA: processarTexto()
+IA-->>B: categoria, prioridade, confiança
+
+B->>B: associarClassificacaoAoChamado()
+B->>DB: atualizar chamado(categoria, prioridade, status=Aberto)
+B->>DB: salvar log de classificação
+DB-->>B: confirmação
+
+B-->>W: chamado registrado com classificação automática
+W-->>U: exibir número, categoria e prioridade
+
+A->>W: acessar painel administrativo
+W->>B: listar chamados()
+B->>DB: consultar chamados
+DB-->>B: lista de chamados
+B-->>W: retornar chamados
+
+A->>W: corrigir classificação / alterar status
+W->>B: atualizarChamado(chamadoId, status, categoria, prioridade)
+B->>DB: persistir alterações
+DB-->>B: confirmação
+B-->>W: atualização concluída
+W-->>A: exibir sucesso
+```
+
+## 7.3 Diagrama de Atividades
+
+```mermaid
+flowchart TD
+    A[Início] --> B[Usuário autentica no sistema]
+    B --> C[Acessa formulário de abertura]
+    C --> D[Informa título e descrição]
+    D --> E[Backend valida dados]
+    E --> F[Registrar chamado com data/hora e status EmTriagem]
+    F --> G[Enviar título e descrição ao Módulo de IA]
+    G --> H[IA processa texto]
+    H --> I[Retornar categoria e prioridade sugeridas]
+    I --> J[Backend salva classificação e log]
+    J --> K[Atualizar chamado para status Aberto]
+    K --> L[Exibir resultado ao usuário]
+
+    L --> M{Administrador irá revisar?}
+    M -- Não --> N[Fim]
+    M -- Sim --> O[Administrador acessa painel]
+    O --> P[Visualiza chamado e sugestão da IA]
+    P --> Q{Classificação está correta?}
+    Q -- Sim --> R[Administrador altera apenas status se necessário]
+    Q -- Não --> S[Administrador corrige categoria e/ou prioridade]
+    R --> T[Salvar alterações]
+    S --> T
+    T --> N[Fim]
+```
+
+## 7.4 Diagrama de Componentes
+
+```mermaid
+flowchart LR
+    subgraph AP[Camada de Apresentação]
+        UI[Interface Web]
+        ADM[Painel Administrativo]
+    end
+
+    subgraph APP[Camada de Aplicação / Backend]
+        AUTH[Serviço de Autenticação]
+        CHAM[Serviço de Chamados]
+        ORQ[Orquestrador de Triagem]
+        API[API Backend]
+    end
+
+    subgraph IA[Camada de Inteligência Artificial]
+        NLP[Módulo de Processamento de Linguagem Natural]
+        CLASS[Motor de Classificação\nCategoria + Prioridade]
+    end
+
+    subgraph DADOS[Camada de Dados]
+        USERDB[(Tabela Usuários)]
+        TICKETDB[(Tabela Chamados)]
+        LOGDB[(Tabela Logs de Classificação)]
+    end
+
+    UI --> API
+    ADM --> API
+
+    API --> AUTH
+    API --> CHAM
+    CHAM --> ORQ
+    ORQ --> NLP
+    NLP --> CLASS
+    CLASS --> ORQ
+
+    AUTH --> USERDB
+    CHAM --> TICKETDB
+    ORQ --> LOGDB
+    ORQ --> TICKETDB
+```
