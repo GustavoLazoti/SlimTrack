@@ -70,7 +70,7 @@ public class OutboxPublisherWorker : BackgroundService
 
         // Declare exchange (idempotent operation)
         await channel.ExchangeDeclareAsync(
-            exchange: "orders",
+            exchange: "tickets",
             type: RabbitMQ.Client.ExchangeType.Topic,
             durable: true,
             autoDelete: false,
@@ -91,7 +91,7 @@ public class OutboxPublisherWorker : BackgroundService
                 };
 
                 await channel.BasicPublishAsync(
-                    exchange: "orders",
+                    exchange: "tickets",
                     routingKey: message.EventType,
                     mandatory: false,
                     basicProperties: properties,
