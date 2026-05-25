@@ -1,4 +1,9 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using SlimTrack.Data.Database;
 using SlimTrack.Services;
 using SlimTrack.Workers;
@@ -9,17 +14,46 @@ builder.AddServiceDefaults();
 
 builder.AddNpgsqlDbContext<AppDbContext>("database");
 builder.AddRabbitMQClient("messaging");
-builder.Services.AddControllers();
+
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+});
+
 builder.Services.AddOpenApi();
 
+// Serviço de classificação heurística — substituível por NLP real no futuro
+builder.Services.AddSingleton<IClassificationService, KeywordClassificationService>();
+
+// Publisher de eventos para RabbitMQ
 builder.Services.AddSingleton<IEventPublisher, RabbitMQEventPublisher>();
 
-// Register background workers for order processing workflow
-builder.Services.AddHostedService<OutboxPublisherWorker>();      // Outbox Pattern
-builder.Services.AddHostedService<OrderEventConsumerWorker>();  // Received -> Processing
-builder.Services.AddHostedService<OrderTransitWorker>();         // Processing -> InTransit
-builder.Services.AddHostedService<OrderDeliveryWorker>();        // InTransit -> OutForDelivery
-builder.Services.AddHostedService<OrderCompletionWorker>();      // OutForDelivery -> Delivered
+// Workers assíncronos
+builder.Services.AddHostedService<OutboxPublisherWorker>();          // Outbox → RabbitMQ
+builder.Services.AddHostedService<TicketClassificationWorker>();     // EmTriagem → Aberto (triagem automática)
+
+// Autenticação JWT
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Jwt:Key não configurado no appsettings.json");
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "SlimTrack",
+            ValidAudience = builder.Configuration["Jwt:Audience"] ?? "SlimTrack",
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -27,117 +61,82 @@ using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    
+
     logger.LogInformation("========================================");
-    logger.LogInformation("TESTING DATABASE CONNECTION");
+    logger.LogInformation("VERIFICANDO CONEXÃO COM O BANCO DE DADOS");
     logger.LogInformation("========================================");
-    
+
     var retries = 10;
     var delay = TimeSpan.FromSeconds(3);
     bool connected = false;
-    
+
     for (var i = 0; i < retries; i++)
     {
         try
         {
-            logger.LogInformation("Connection attempt {Attempt}/{Total}...", i + 1, retries);
-            
-            // Try to connect
+            logger.LogInformation("Tentativa de conexão {Attempt}/{Total}...", i + 1, retries);
+
             var canConnect = await dbContext.Database.CanConnectAsync();
-            
             if (canConnect)
             {
-                logger.LogInformation("DATABASE CONNECTION SUCCESSFUL!");
+                logger.LogInformation("CONEXÃO COM O BANCO ESTABELECIDA!");
                 connected = true;
-                
-                // Check if tables exist
-                try
-                {
-                    var ordersCount = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(dbContext.Orders);
-                    logger.LogInformation("Table 'Orders' exists with {Count} records", ordersCount);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning("Table 'Orders' does not exist yet: {Message}", ex.Message);
-                }
-                
                 break;
             }
             else
             {
-                throw new InvalidOperationException("CanConnectAsync returned false");
+                throw new InvalidOperationException("CanConnectAsync retornou false");
             }
         }
         catch (Exception ex)
         {
-            logger.LogWarning("Connection attempt {Attempt}/{Total} failed: {Error}", 
-                i + 1, retries, ex.Message);
-            
+            logger.LogWarning("Tentativa {Attempt}/{Total} falhou: {Error}", i + 1, retries, ex.Message);
+
             if (i < retries - 1)
             {
-                logger.LogInformation("Retrying in {Delay} seconds...", delay.TotalSeconds);
+                logger.LogInformation("Tentando novamente em {Delay}s...", delay.TotalSeconds);
                 await Task.Delay(delay);
             }
         }
     }
-    
+
     if (!connected)
     {
-        logger.LogError("FAILED TO CONNECT TO DATABASE AFTER {Retries} ATTEMPTS", retries);
-        logger.LogError("Application will exit. Please check: PostgreSQL container is running (check Aspire dashboard)");
-        throw new InvalidOperationException("Cannot connect to database");
+        logger.LogError("FALHA AO CONECTAR AO BANCO APÓS {Retries} TENTATIVAS", retries);
+        throw new InvalidOperationException("Não foi possível conectar ao banco de dados");
     }
-    
-    logger.LogInformation("========================================");
-    logger.LogInformation("READY TO APPLY MIGRATIONS (if needed)");
-    logger.LogInformation("========================================");
 
-    //Apply migrations
-    // Essa etapa eu não conhecia muito bem e achei muito interessante. Basicamente, ao iniciar a aplicação,
-    // ela verifica se há migrações pendentes no banco de dados e as aplica automaticamente.
-    // Isso é útil para garantir que o esquema do banco de dados esteja sempre atualizado com a
-    // versão mais recente do código da aplicação, sem a necessidade de intervenção
-    // manual. Além de que quando alguém for rodar, não vai precisar se preocupar em rodar as migrations.
+    // Aplicar migrations pendentes automaticamente
     try
     {
-        logger.LogInformation("Checking for pending migrations...");
-        
+        logger.LogInformation("Verificando migrations pendentes...");
+
         var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
         var appliedMigrations = await dbContext.Database.GetAppliedMigrationsAsync();
-        
-        logger.LogInformation("Applied migrations: {Count}", appliedMigrations.Count());
-        foreach (var migration in appliedMigrations)
-        {
-            logger.LogInformation("Applied {Migration}", migration);
-        }
-        
-        logger.LogInformation("Pending migrations: {Count}", pendingMigrations.Count());
-        foreach (var migration in pendingMigrations)
-        {
-            logger.LogInformation("Pending {Migration}", migration);
-        }
-        
+
+        logger.LogInformation("Migrations aplicadas: {Count}", appliedMigrations.Count());
+        logger.LogInformation("Migrations pendentes: {Count}", pendingMigrations.Count());
+
         if (pendingMigrations.Any())
         {
-            logger.LogInformation("Applying {Count} pending migration(s)...", pendingMigrations.Count());
+            logger.LogInformation("Aplicando {Count} migration(s) pendente(s)...", pendingMigrations.Count());
             await dbContext.Database.MigrateAsync();
-            logger.LogInformation("Migrations applied successfully!");
+            logger.LogInformation("Migrations aplicadas com sucesso!");
         }
         else
         {
-            logger.LogInformation("Database is up-to-date. No migrations needed.");
+            logger.LogInformation("Banco de dados atualizado. Nenhuma migration pendente.");
         }
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "❌ Failed to apply migrations!");
+        logger.LogError(ex, "Falha ao aplicar migrations!");
         throw;
     }
 }
 
 app.MapDefaultEndpoints();
 
-// Global middleware to log any unhandled exceptions so they appear in container logs / APM
 app.Use(async (context, next) =>
 {
     try
@@ -147,7 +146,7 @@ app.Use(async (context, next) =>
     catch (Exception ex)
     {
         var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Unhandled exception processing {Method} {Path}", context.Request.Method, context.Request.Path);
+        logger.LogError(ex, "Exceção não tratada em {Method} {Path}", context.Request.Method, context.Request.Path);
         throw;
     }
 });
@@ -159,8 +158,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
 app.Run();
+
