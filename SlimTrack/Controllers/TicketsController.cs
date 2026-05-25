@@ -31,7 +31,7 @@ public class TicketsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateTicket([FromBody] CreateTicketRequest request)
     {
-        _logger.LogInformation("Recebendo requisição de abertura de chamado de {Email}", request.RequesterEmail);
+        _logger.LogInformation("Recebendo requisição de abertura de chamado de {Email}", request.RequesterEmail.Replace(Environment.NewLine, "").Replace("\n", "").Replace("\r", ""));
 
         var ticket = new Ticket
         {
@@ -82,7 +82,7 @@ public class TicketsController : ControllerBase
 
         _logger.LogInformation(
             "Chamado {TicketId} criado por {Email} — status: EmTriagem",
-            ticket.Id, ticket.RequesterEmail
+            ticket.Id, ticket.RequesterEmail.Replace(Environment.NewLine, "").Replace("\n", "").Replace("\r", "")
         );
 
         return CreatedAtAction(nameof(GetTicketById), new { id = ticket.Id }, MapToResponse(ticket));

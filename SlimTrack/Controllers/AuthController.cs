@@ -55,7 +55,7 @@ public class AuthController : ControllerBase
         _dbContext.Users.Add(user);
         await _dbContext.SaveChangesAsync();
 
-        _logger.LogInformation("Novo usuário registrado: {Email}", user.Email);
+        _logger.LogInformation("Novo usuário registrado: {Email}", user.Email.Replace(Environment.NewLine, "").Replace("\n", "").Replace("\r", ""));
 
         return Created(string.Empty, new { id = user.Id, name = user.Name, email = user.Email, role = user.Role.ToString() });
     }
