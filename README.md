@@ -547,3 +547,83 @@ flowchart LR
     ORQ --> LOGDB
     ORQ --> TICKETDB
 ```
+
+## 5. Arquitetura
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    .NET Aspire AppHost                   │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐  │
+│  │PostgreSQL│  │ RabbitMQ │  │  Redis   │  │SlimTrack│  │
+│  └──────────┘  └──────────┘  └──────────┘  └────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+A aplicação principal (`SlimTrack`) é composta por:
+
+```
+SlimTrack/
+├── Controllers/         # Endpoints HTTP (Auth, Tickets)
+├── Models/              # Entidades de domínio (Ticket, User, TicketEvent, …)
+├── DTOs/                # Objetos de entrada e saída da API
+├── Services/            # IClassificationService + KeywordClassificationService
+│                        # IEventPublisher + RabbitMQEventPublisher
+├── Workers/             # OutboxPublisherWorker, TicketClassificationWorker
+├── Data/                # AppDbContext (EF Core) + migrations
+└── Events/              # Contratos de eventos (TicketCreatedEvent, …)
+```
+
+---
+
+## 6. Fluxo Principal — Abertura e Triagem de Chamado
+
+```
+Cliente HTTP
+    │
+    │  POST /api/tickets  { title, description, requester_name, requester_email }
+    ▼
+TicketsController
+    │
+    ├─ Cria Ticket com status = EmTriagem
+    ├─ Adiciona TicketEvent ("Aguardando triagem")
+    ├─ Grava OutboxMessage { event_type: "ticket.created", published: false }
+    └─ SaveChangesAsync  ──────────────────────────────► PostgreSQL
+           │
+           │  (retorna 201 imediatamente — resposta não-bloqueante)
+           ▼
+OutboxPublisherWorker  (polling a cada 5 s)
+    │
+    ├─ Busca OutboxMessages onde published = false
+    ├─ Publica no RabbitMQ  exchange=tickets  routing_key=ticket.created
+    └─ Marca published = true  ────────────────────────► PostgreSQL
+           │
+           ▼
+RabbitMQ  (exchange: tickets / queue: tickets.classification)
+           │
+           ▼
+TicketClassificationWorker  (consumer AMQP)
+    │
+    ├─ Desserializa TicketCreatedEvent
+    ├─ Verifica status ainda = EmTriagem (idempotência)
+    ├─ Chama IClassificationService.Classify(title, description)
+    │       └─ KeywordClassificationService
+    │             ├─ Pontuação por categoria (Hardware/Software/Rede/Acesso/Outros)
+    │             ├─ Pontuação por prioridade (Alta > Media > Baixa)
+    │             └─ Retorna ClassificationResult { Category, Priority, Confidence, Rationale }
+    │
+    ├─ UPDATE Tickets SET status=Aberto, category=…, priority=…  (UPDATE atômico com guard de status)
+    ├─ Insere TicketEvent ("Triagem automática concluída")
+    ├─ Insere ClassificationLog (auditoria)
+    ├─ Publica ticket.status_changed no RabbitMQ
+    └─ BasicAck  ──────────────────────────────────────► RabbitMQ confirmado
+```
+## 7. Decisões de Design
+
+| Decisão | Motivo |
+|---|---|
+| Triagem assíncrona via RabbitMQ | A API responde imediatamente (201) sem esperar a classificação, melhorando a experiência do usuário |
+| Outbox Pattern | Evita perda de eventos em caso de falha de rede ou reinicialização do broker |
+| `IClassificationService` como abstração | Permite trocar a heurística por NLP real sem alterar a API ou os workers |
+| UPDATE atômico com guard de status | Evita que dois workers classifiquem o mesmo chamado simultaneamente |
+| JWT com roles | Diferencia usuário comum (leitura/abertura) de administrador (edição) sem infra adicional |
+| .NET Aspire | Orquestra toda a infraestrutura local com um único `dotnet run`, sem escrever `docker-compose` manualmente |
