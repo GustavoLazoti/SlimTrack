@@ -18,38 +18,14 @@ O administrador continua responsável pela governança do atendimento, podendo r
 
 Os requisitos funcionais descritos no material original levam a um fluxo principal bem definido:
 
-1. cadastro e autenticação de usuários;
-2. abertura de chamado com título e descrição;
+1. abertura de chamado com título e descrição;
 3. classificação automática por categoria;
 4. classificação automática por prioridade;
 5. consulta do status do chamado;
 6. gestão administrativa dos chamados;
 7. atualização do status de atendimento.
 
-### 1.3 Escopo não funcional
-
-O README original deixa claro que o projeto deve ser:
-
-- simples de usar;
-- acessível via navegador;
-- implementado com tecnologias gratuitas ou open-source;
-- demonstrável em ambiente local;
-- organizado com boas práticas de arquitetura e versionamento.
-
-Além disso, a triagem automática deve ter caráter **demonstrativo**, não comercial, e responder em tempo adequado para uma apresentação acadêmica.
-
-### 1.4 Limites do escopo
-
-Ficam fora do escopo nesta fase:
-
-- integrações com ferramentas corporativas reais;
-- notificações por e-mail, SMS ou apps externos;
-- SLAs reais de operação;
-- alta disponibilidade e produção;
-- autenticação corporativa avançada;
-- monitoramento em tempo real.
-
-### 1.5 Arquitetura pretendida
+### 1.3 Arquitetura pretendida
 
 O material modela a solução em **4 camadas**:
 
@@ -64,157 +40,25 @@ Essa arquitetura favorece evolução incremental e está alinhada com uma implem
 - isolar contratos entre camadas;
 - trocar a implementação da triagem sem reescrever o domínio;
 - manter baixo acoplamento entre API, regras de negócio e infraestrutura.
-
-### 1.6 Stack sugerida pelo próprio material
-
-O README aponta a seguinte direção tecnológica:
-
-- **Frontend**: React.js;
-- **Backend**: Python com FastAPI ou Flask;
-- **Módulo de IA**: Scikit-learn ou spaCy;
-- **Banco de dados**: PostgreSQL ou SQLite.
-
-### 1.7 Interpretação prática para a execução
-
-Com base no escopo e na arquitetura, a evolução mais fluida do projeto é:
-
-1. provar o fluxo principal com uma **POC funcional**;
-2. manter a triagem como um módulo substituível;
-3. validar o processo fim a fim antes de investir em autenticação robusta e frontend completo;
-4. só depois acoplar persistência relacional definitiva e modelo de IA treinado.
-
+- 
 ---
 
-## 2. Steps de desenvolvimento para um projeto fluido
-
-## Fase 0 — Fundação do produto
-
-- consolidar escopo, regras de negócio e atores;
-- transformar a documentação acadêmica em backlog técnico;
-- definir convenções de pastas, camadas e contratos;
-- decidir o menor recorte demonstrável da aplicação.
-
-## Fase 1 — POC do fluxo principal
-
-- criar backend inicial;
-- expor endpoint para abertura de chamados;
-- implementar triagem automática demonstrativa;
-- persistir em memória ou SQLite simples;
-- listar chamados e permitir atualização administrativa;
-- documentar execução local.
-
-**Objetivo da fase:** provar que o coração do produto funciona.
-
-## Fase 2 — Consolidação do domínio
-
-- introduzir autenticação básica;
-- separar claramente entidades, casos de uso e adaptadores;
-- registrar logs de classificação;
-- padronizar enums, DTOs e contratos de resposta;
-- ampliar testes automatizados de domínio e API.
-
-**Objetivo da fase:** reduzir débito técnico e preparar escalabilidade.
-
-## Fase 3 — Interface web
-
-- criar tela de abertura de chamado;
-- criar tela de acompanhamento do usuário;
-- criar painel administrativo;
-- integrar frontend com a API;
-- tratar feedback de carregamento, sucesso e erro.
-
-**Objetivo da fase:** tornar a experiência demonstrável para apresentação.
-
-## Fase 4 — Persistência e auditoria
-
-- migrar para banco relacional definitivo;
-- armazenar usuários, chamados e histórico;
-- registrar confiança e justificativa da classificação;
-- permitir trilha de auditoria das correções administrativas.
-
-**Objetivo da fase:** aproximar a solução do desenho arquitetural completo.
-
-## Fase 5 — Evolução real do módulo de IA
-
-- substituir heurísticas por pipeline de NLP;
-- preparar conjunto de exemplos;
-- treinar e validar modelo;
-- medir precisão por categoria e prioridade;
-- manter fallback para classificação segura.
-
-**Objetivo da fase:** evoluir a POC para um classificador academicamente consistente.
-
-## Fase 6 — Qualidade de entrega
-
-- ampliar cobertura de testes;
-- revisar segurança mínima;
-- revisar performance de triagem;
-- preparar roteiro de apresentação;
-- fechar documentação final da disciplina.
-
----
-
-## 3. Primeira POC iniciada nesta branch
-
-Esta branch inicia a aplicação com um recorte pequeno, mas demonstrável:
+## 2. Geral
 
 - backend em **FastAPI**;
 - arquitetura em camadas com foco em **SOLID**;
 - domínio de chamados separado da infraestrutura;
-- serviço de classificação demonstrativo baseado em palavras-chave;
+- serviço de classificação;
 - endpoints para criar, listar e atualizar chamados;
 - testes automatizados do fluxo principal.
 
-### Decisões desta POC
+### Decisões
 
 - a triagem é **heurística**, para acelerar a prova de conceito;
 - a persistência está **em memória**, para reduzir complexidade inicial;
 - autenticação completa foi deixada para a próxima fase;
 - a API foi priorizada antes do frontend, porque ela representa o núcleo do sistema.
-
-### Como SOLID foi aplicado
-
-- **S**: entidades, casos de uso, API e repositório estão separados;
-- **O**: o classificador pode ser substituído sem alterar os casos de uso;
-- **L**: implementações concretas respeitam os contratos do domínio;
-- **I**: portas pequenas e específicas para repositório e classificador;
-- **D**: casos de uso dependem de abstrações, não de classes concretas.
-
----
-
-## 4. Como executar a POC
-
-### Requisitos
-
-- Python 3.11+
-
-### Instalação
-
-```bash
-cd /home/runner/work/CallsTrend/CallsTrend
-python -m pip install -e .[dev]
-```
-
-### Subir a API
-
-```bash
-cd /home/runner/work/CallsTrend/CallsTrend
-uvicorn callstrend.main:app --app-dir src --reload
-```
-
-### Rodar testes
-
-```bash
-cd /home/runner/work/CallsTrend/CallsTrend
-pytest
-```
-
-### Endpoints da POC
-
-- `GET  /health`
-- `POST /api/v1/tickets`
-- `GET  /api/v1/tickets`
-- `PATCH /api/v1/tickets/{ticket_id}`
+- 
 
 ---
 
@@ -234,16 +78,6 @@ Arquivo separado (somente API): `src/callstrend/api/doc/swagger.md`
 
 ---
 
-### Enums e valores permitidos
-
-| Enum | Campo | Valores aceitos |
-|---|---|---|
-| **Categoria** | `category` | `Hardware`, `Software`, `Rede`, `Acesso`, `Outros` |
-| **Prioridade** | `priority` | `Baixa`, `Media`, `Alta` |
-| **Status** | `status` | `EmTriagem`, `Aberto`, `EmAtendimento`, `Resolvido`, `Fechado` |
-
----
-
 ### GET /health
 
 Verifica se a API está no ar.
@@ -258,12 +92,6 @@ Verifica se a API está no ar.
 ```
 
 ---
-
-### POST /api/v1/tickets
-
-Abre um novo chamado técnico e executa a triagem automática por IA.
-
-**Autenticação:** não necessária (fase 1 — POC)
 
 #### Fluxo interno
 
@@ -285,10 +113,10 @@ Abre um novo chamado técnico e executa a triagem automática por IA.
 
 | Campo | Tipo | Obrigatório | Regras |
 |---|---|---|---|
-| `title` | `string` | ✅ | 3–120 caracteres |
-| `description` | `string` | ✅ | 10–2000 caracteres |
-| `requester_name` | `string` | ✅ | 3–80 caracteres |
-| `requester_email` | `string` | ✅ | 5–160 caracteres |
+| `title` | `string` | Sim | 3–120 caracteres |
+| `description` | `string` | Sim | 10–2000 caracteres |
+| `requester_name` | `string` | Sim | 3–80 caracteres |
+| `requester_email` | `string` | Sim | 5–160 caracteres |
 
 #### Response 201 — Created
 
@@ -334,8 +162,6 @@ Abre um novo chamado técnico e executa a triagem automática por IA.
 
 Retorna todos os chamados registrados com sua classificação atual.
 
-**Autenticação:** não necessária (fase 1 — POC)
-
 #### Response 200 — OK
 
 Array de objetos `TicketResponse` (mesma estrutura do `POST`).
@@ -366,8 +192,6 @@ Quando não há chamados: retorna `[]`.
 
 Atualiza um chamado existente — uso administrativo.
 
-**Autenticação:** não necessária (fase 1 — POC)
-
 #### Path parameter
 
 | Parâmetro | Tipo | Descrição |
@@ -388,9 +212,9 @@ Todos os campos são **opcionais**. Apenas os campos enviados serão alterados.
 
 | Campo | Tipo | Obrigatório | Valores aceitos |
 |---|---|---|---|
-| `status` | `string` (enum) | ❌ | `EmTriagem`, `Aberto`, `EmAtendimento`, `Resolvido`, `Fechado` |
-| `category` | `string` (enum) | ❌ | `Hardware`, `Software`, `Rede`, `Acesso`, `Outros` |
-| `priority` | `string` (enum) | ❌ | `Baixa`, `Media`, `Alta` |
+| `status` | `string` (enum) | Não | `EmTriagem`, `Aberto`, `EmAtendimento`, `Resolvido`, `Fechado` |
+| `category` | `string` (enum) | Não | `Hardware`, `Software`, `Rede`, `Acesso`, `Outros` |
+| `priority` | `string` (enum) | Não | `Baixa`, `Media`, `Alta` |
 
 #### Response 200 — OK
 
@@ -433,20 +257,7 @@ curl -X PATCH http://localhost:8000/api/v1/tickets/{ticket_id} \
 
 ---
 
-## 5. Próximos passos recomendados
-
-1. adicionar cadastro e autenticação;
-2. persistir chamados em SQLite;
-3. registrar logs de classificação;
-4. criar frontend para usuário e administrador;
-5. trocar o classificador heurístico por modelo de NLP;
-6. ampliar histórico e auditoria administrativa.
-
----
-
-## 6. Base conceitual do projeto
-
-## 6.1 Entregas acadêmicas esperadas
+## 3. Base conceitual do projeto
 
 - TAP;
 - cronograma inicial;
@@ -459,7 +270,7 @@ curl -X PATCH http://localhost:8000/api/v1/tickets/{ticket_id} \
 - relatório de testes;
 - documentação final.
 
-## 6.2 Requisitos funcionais de referência
+## 3.2 Requisitos funcionais de referência
 
 - **RF01** – cadastro e autenticação;
 - **RF02** – abertura de chamados com descrição textual;
@@ -469,7 +280,7 @@ curl -X PATCH http://localhost:8000/api/v1/tickets/{ticket_id} \
 - **RF06** – gestão administrativa;
 - **RF07** – atualização do status do chamado.
 
-## 6.3 Requisitos não funcionais de referência
+## 3.3 Requisitos não funcionais de referência
 
 - interface simples e intuitiva;
 - resposta adequada da triagem;
@@ -477,7 +288,7 @@ curl -X PATCH http://localhost:8000/api/v1/tickets/{ticket_id} \
 - acesso via navegador;
 - organização do código e versionamento.
 
-## 6.4 Critérios de aceitação de referência
+## 3.4 Critérios de aceitação de referência
 
 - as funcionalidades do fluxo principal devem estar implementadas;
 - a triagem automática precisa ser demonstrável;
@@ -485,20 +296,11 @@ curl -X PATCH http://localhost:8000/api/v1/tickets/{ticket_id} \
 - o sistema deve funcionar localmente;
 - a documentação deve estar organizada.
 
-## 6.5 Restrições e premissas
-
-- desenvolvimento individual;
-- orçamento zero;
-- base de dados reduzida ou simulada;
-- uso acadêmico;
-- ambiente local;
-- IA com caráter demonstrativo.
-
 ---
 
-## 7. Diagramas
+## 4. Diagramas
 
-## 7.1 Diagrama de Classes
+## 4.1 Diagrama de Classes
 
 ```mermaid
 classDiagram
@@ -630,7 +432,7 @@ AutenticacaoService --> Usuario : valida acesso
 Administrador --> Chamado : gerencia
 ```
 
-## 7.2 Diagrama de Sequência
+## 4.2 Diagrama de Sequência
 
 ```mermaid
 sequenceDiagram
@@ -675,7 +477,7 @@ B-->>W: atualização concluída
 W-->>A: exibir sucesso
 ```
 
-## 7.3 Diagrama de Atividades
+## 4.3 Diagrama de Atividades
 
 ```mermaid
 flowchart TD
@@ -703,7 +505,7 @@ flowchart TD
     T --> N[Fim]
 ```
 
-## 7.4 Diagrama de Componentes
+## 4.4 Diagrama de Componentes
 
 ```mermaid
 flowchart LR
