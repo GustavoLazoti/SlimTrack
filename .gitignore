@@ -408,3 +408,4 @@ FodyWeavers.xsd
 
 # Docker
 docker-compose.override.yml
+/README.md

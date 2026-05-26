@@ -31,23 +31,26 @@ namespace SlimTrack.Migrations
                     table.PrimaryKey("PK_ClassificationLogs", x => x.Id);
                 });
 
-            migrationBuilder.CreateTable(
-                name: "OutboxMessages",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    EventType = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    Payload = table.Column<string>(type: "text", nullable: false),
-                    Published = table.Column<bool>(type: "boolean", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    PublishedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    RetryCount = table.Column<int>(type: "integer", nullable: false),
-                    ErrorMessage = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_OutboxMessages", x => x.Id);
-                });
+            migrationBuilder.Sql(
+                """
+                CREATE TABLE IF NOT EXISTS "OutboxMessages" (
+                    "Id" uuid NOT NULL,
+                    "EventType" character varying(200) NOT NULL,
+                    "Payload" text NOT NULL,
+                    "Published" boolean NOT NULL,
+                    "CreatedAt" timestamp with time zone NOT NULL,
+                    "PublishedAt" timestamp with time zone,
+                    "RetryCount" integer NOT NULL,
+                    "ErrorMessage" character varying(2000),
+                    CONSTRAINT "PK_OutboxMessages" PRIMARY KEY ("Id")
+                );
+
+                CREATE INDEX IF NOT EXISTS "IX_OutboxMessages_CreatedAt"
+                    ON "OutboxMessages" ("CreatedAt");
+
+                CREATE INDEX IF NOT EXISTS "IX_OutboxMessages_Published_CreatedAt"
+                    ON "OutboxMessages" ("Published", "CreatedAt");
+                """);
 
             migrationBuilder.CreateTable(
                 name: "Users",
@@ -126,15 +129,7 @@ namespace SlimTrack.Migrations
                 table: "ClassificationLogs",
                 column: "Timestamp");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_OutboxMessages_CreatedAt",
-                table: "OutboxMessages",
-                column: "CreatedAt");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_OutboxMessages_Published_CreatedAt",
-                table: "OutboxMessages",
-                columns: new[] { "Published", "CreatedAt" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_TicketEvents_TicketId",
